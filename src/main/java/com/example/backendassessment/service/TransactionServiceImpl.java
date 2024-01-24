@@ -12,7 +12,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 
 import static com.example.backendassessment.constant.ResponseCodes.*;
 import static com.example.backendassessment.constant.TransactionType.*;
@@ -60,8 +63,15 @@ public class TransactionServiceImpl implements TransactionService{
             response.setResponseCode(ACCOUNT_NOT_FOUND);
         return response;
     }
+    private final Map<String, ReentrantLock> accountLocks = new ConcurrentHashMap<>();
+
     @Override
     public OperationResponse doTransaction(OperationRequest request, TransactionType transactionType) {
+        accountLocks.putIfAbsent(request.getAccountId(), new ReentrantLock());
+
+        ReentrantLock accountLock = accountLocks.get(request.getAccountId());
+
+        accountLock.lock();
         try {
             int status = BasicUtils.validate(request);
             if(status==SUCCESS)
@@ -73,6 +83,8 @@ public class TransactionServiceImpl implements TransactionService{
 
         }catch (Exception e){
             return new OperationResponse(INTERNAL_ERROR);
+        }finally {
+            accountLock.unlock();
         }
     }
     private boolean isAccountHasSufficientBalance(Account account,BigDecimal amount){
